@@ -76,9 +76,6 @@
     <!-- Toast értesítések konténere -->
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <!-- Rejtett fájl input JSON importáláshoz -->
-    <input type="file" id="json-import-input" accept=".json,application/json" class="hidden" onchange="handleJsonImport(event)">
-
     <!-- Fejléc -->
     <header class="bg-slate-950 text-white sticky top-0 z-40 shadow-lg border-b border-slate-800 no-print">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -161,10 +158,6 @@
                     <button type="button" onclick="loadSampleData()" class="tap-btn flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 cursor-pointer">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                         Mintaadatok betöltése
-                    </button>
-                    <button type="button" onclick="triggerJsonImport()" class="tap-btn flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-sm cursor-pointer">
-                        <i class="fa-solid fa-file-import text-brand-400"></i>
-                        JSON betöltés
                     </button>
                     <button type="button" onclick="resetAllData()" class="tap-btn inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800/80 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-800 font-semibold text-sm cursor-pointer">
                         <i class="fa-solid fa-rotate-left"></i>
@@ -425,7 +418,10 @@
                     <div class="bg-slate-900 px-6 py-4 flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-3">
                             <span class="w-8 h-8 rounded-lg bg-brand-500 text-white flex items-center justify-center font-bold text-sm">3</span>
-                            <h2 class="text-lg font-bold text-white">Mit kell átnézni? – Átvizsgálási lista</h2>
+                            <div>
+                                <h2 class="text-lg font-bold text-white leading-tight">Mit kell átnézni? – Átvizsgálási lista</h2>
+                                <span id="vehicle-specific-subtitle" class="text-[11px] text-brand-400 font-medium hidden"></span>
+                            </div>
                         </div>
                         <span id="evaluated-badge" class="text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 font-semibold">
                             0 / 23 pont értékelve
@@ -619,20 +615,6 @@
                             class="tap-btn py-3 px-3 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer">
                             <i class="fa-regular fa-copy text-brand-600"></i>
                             Szöveg másolása
-                        </button>
-                    </div>
-
-                    <!-- JSON Export és Import -->
-                    <div class="grid grid-cols-2 gap-2.5 pt-1 border-t border-slate-100">
-                        <button type="button" onclick="exportToJson()"
-                            class="tap-btn py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer">
-                            <i class="fa-solid fa-file-export text-slate-500"></i>
-                            JSON mentés
-                        </button>
-                        <button type="button" onclick="triggerJsonImport()"
-                            class="tap-btn py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer">
-                            <i class="fa-solid fa-file-import text-slate-500"></i>
-                            JSON visszatöltés
                         </button>
                     </div>
                 </div>
@@ -1134,6 +1116,13 @@
         // Ellenőrzési kategóriák és tételek (reális hazai átlagárakkal és OBD-függő pontokkal)
         const checklistCategories = [
             {
+                id: 'vehicle_specific',
+                isSpecific: true,
+                title: 'Típusspecifikus gyenge pontok',
+                icon: 'fa-bullseye',
+                getItems: () => getVehicleSpecificChecklistItems()
+            },
+            {
                 id: 'diag',
                 title: 'Diagnosztika & Elektronika',
                 icon: 'fa-microchip',
@@ -1332,38 +1321,262 @@
             }
         ];
 
+        // Jármű- és típusspecifikus ellenőrzési pontok generálása a kiválasztott autó alapján
+        function getVehicleSpecificChecklistItems() {
+            const makeRaw = document.getElementById('car-make')?.value.trim() || '';
+            const modelRaw = document.getElementById('car-model')?.value.trim() || '';
+            const engineRaw = document.getElementById('car-engine')?.value.trim() || '';
+            const make = normalizeText(makeRaw);
+            const model = normalizeText(modelRaw);
+            const engine = normalizeText(engineRaw);
+            const fuel = appState.selectedFuel;
+            const body = appState.selectedBodyStyle;
+            const year = parseInt(document.getElementById('car-year')?.value, 10);
+
+            if (!make && !model) return [];
+
+            const items = [];
+
+            // 1. Konkrét modell- és motor-specifikus típushibák
+            if (model.includes('golf 4') || model.includes('bora')) {
+                items.push(
+                    {
+                        id: 'spec_golf4_rust',
+                        title: '[VW Golf 4] Első sárvédők alja, küszöbök és csomagtérajtó kilincs környéke',
+                        desc: 'A sárvédő dob mögött felgyűlő sár miatti átrozsdásodás és a mikrokapcsoló korróziója.',
+                        defaultWarnCost: 45000,
+                        defaultBadCost: 110000
+                    },
+                    {
+                        id: 'spec_golf4_locks',
+                        title: '[VW Golf 4] Ajtózár mikrokapcsolók, belső világítás és ablakemelő műanyag csúszkák',
+                        desc: 'Ajtónyitásra nem kapcsoló belső fény/zümmer és beeső elektromos ablaküveg ellenőrzése.',
+                        defaultWarnCost: 22000,
+                        defaultBadCost: 45000
+                    }
+                );
+                if (engine.includes('1.4') || engine.includes('1.6 16v')) {
+                    items.push({
+                        id: 'spec_golf4_16v',
+                        title: '[VW 1.4 / 1.6 16V] Kartergáz-lecsapató (olajfogyasztás) és dupla vezérműszíj feszítőgörgők',
+                        desc: 'Kékes füst gázelvétel után, olajfogyasztás és vezérlés feszítőgörgők állapota.',
+                        defaultWarnCost: 40000,
+                        defaultBadCost: 125000
+                    });
+                }
+            } else if (model.includes('golf 5') || model.includes('octavia') || model.includes('passat')) {
+                items.push({
+                    id: 'spec_vag_rust',
+                    title: `[${makeRaw} ${modelRaw}] Küszöbvégek, sárvédőívek és hátsó futómű bölcső korróziója`,
+                    desc: 'Tipikus VAG korróziós pontok: első sárvédők közepe, küszöbök és hátsó lengőkarok.',
+                    defaultWarnCost: 55000,
+                    defaultBadCost: 140000
+                });
+                if (engine.includes('tsi') || engine.includes('tfsi')) {
+                    items.push({
+                        id: 'spec_vag_tsi',
+                        title: '[TSI / TFSI] Vezérműlánc megnyúlása (hidegindítási csörgés) és olajfogyasztás',
+                        desc: 'Hidegindításkor 2-3 másodpercig tartó fémes csörgés és kokszosodás ellenőrzése.',
+                        defaultWarnCost: 95000,
+                        defaultBadCost: 220000
+                    });
+                }
+            } else if (model.includes('mx-5') || model.includes('mx5')) {
+                items.push(
+                    {
+                        id: 'spec_mx5_rust',
+                        title: '[Mazda MX-5] Hátsó küszöbvégek, hátsó sárvédőívek és első hossznyúlványok rozsdája',
+                        desc: 'A vízelvezető csatornák eldugulása miatti belülről kifelé rozsdásodás és nyúlvány-korrózió.',
+                        defaultWarnCost: 85000,
+                        defaultBadCost: 240000
+                    },
+                    {
+                        id: 'spec_mx5_roof',
+                        title: '[Mazda MX-5] Vászon- vagy keménytető vízzárása, esőcsatornák és ablakgumik',
+                        desc: 'Tető szakadásai, hátsó ablak ragasztása és az ülések mögötti vízelvezető tisztasága.',
+                        defaultWarnCost: 35000,
+                        defaultBadCost: 150000
+                    }
+                );
+            } else if (model.includes('mazda 3') || model.includes('mazda 6') || make === 'mazda') {
+                items.push({
+                    id: 'spec_mazda_rust',
+                    title: `[${makeRaw} ${modelRaw}] Hátsó sárvédőívek, ajtók alja és alváz korrózióvédelme`,
+                    desc: 'A japán karosszéria tipikus rozsdásodási pontjainak alapos átvizsgálása.',
+                    defaultWarnCost: 65000,
+                    defaultBadCost: 170000
+                });
+            } else if (model.includes('astra g') || model.includes('astra h') || make === 'opel') {
+                items.push({
+                    id: 'spec_opel_ecotec',
+                    title: `[${makeRaw} ${modelRaw}] CIM modul (kormányoszlop elektronika), gyújtótrafó-híd és EGR szelep`,
+                    desc: 'Kürt/tempomat hibák (CIM modul), rángatás terhelésen (trafósor) és szelepfedél-olajfolyás.',
+                    defaultWarnCost: 38000,
+                    defaultBadCost: 95000
+                });
+            } else if (model.includes('swift') || make === 'suzuki') {
+                items.push({
+                    id: 'spec_suzuki_gearbox',
+                    title: `[${makeRaw} ${modelRaw}] Manuális váltó nyelestengely-csapágy hangja és első bölcső rozsda`,
+                    desc: 'Üresben felengedett kuplungnál jelentkező zúgó hang és az első segédkeret korróziója.',
+                    defaultWarnCost: 55000,
+                    defaultBadCost: 135000
+                });
+            } else if (make === 'bmw') {
+                items.push({
+                    id: 'spec_bmw_core',
+                    title: `[BMW ${modelRaw}] Hűtőrendszer műanyag elemei, kartergáz-szűrő és olajszivárgások`,
+                    desc: 'Kiegyenlítő tartály repedése, olajszűrőház tömítés és szelepfedél szivárgás ellenőrzése.',
+                    defaultWarnCost: 55000,
+                    defaultBadCost: 145000
+                });
+                if (fuel === 'Dízel') {
+                    items.push({
+                        id: 'spec_bmw_n47',
+                        title: '[BMW Dízel] Hátsó vezérműlánc hangja (N47/N57) és szívósor örvénycsappantyúk',
+                        desc: 'Meleg motoron alapjáraton hallható súrlódó lánchang a tűzfal felől.',
+                        defaultWarnCost: 140000,
+                        defaultBadCost: 340000
+                    });
+                }
+            } else if (make === 'toyota' || make === 'lexus') {
+                items.push({
+                    id: 'spec_toyota_rust',
+                    title: `[${makeRaw} ${modelRaw}] Hátsó futómű-segédkeret, tankbetöltő cső és alváz korróziója`,
+                    desc: 'Mechanikusan tartós, de az alvázelemek és a tankcső rozsdásodása gyakori.',
+                    defaultWarnCost: 45000,
+                    defaultBadCost: 120000
+                });
+            } else if (make === 'honda') {
+                items.push({
+                    id: 'spec_honda_rust',
+                    title: `[Honda ${modelRaw}] Hátsó kerékjáratok korróziója és VTEC szelep tömítés olajszivárgás`,
+                    desc: 'Hátsó sárvédőívek pereme és a hengerfej oldalán lévő VTEC szolenoid szivárgása.',
+                    defaultWarnCost: 40000,
+                    defaultBadCost: 115000
+                });
+            } else if (make === 'ford') {
+                items.push({
+                    id: 'spec_ford_body',
+                    title: `[Ford ${modelRaw}] Küszöbvégek, ajtók alsó pereme és elektronikai modulok (GEM/BCM)`,
+                    desc: 'Ajtóélek rozsdásodása és központi zár / műszeregység kontakthibák.',
+                    defaultWarnCost: 45000,
+                    defaultBadCost: 115000
+                });
+            } else if (make === 'renault' || make === 'peugeot' || make === 'citroen' || make === 'citroën') {
+                items.push({
+                    id: 'spec_french_elec',
+                    title: `[${makeRaw} ${modelRaw}] Komfortelektronika (BSI/UCH), kábelkötegek és hátsó híd állapota`,
+                    desc: 'Ajtóátvezető kábelek törése, indexkapcsoló-egység és hátsó futómű szilentek/torziós rugók.',
+                    defaultWarnCost: 40000,
+                    defaultBadCost: 110000
+                });
+            }
+
+            // 2. Üzemanyag- és hajtásspecifikus ellenőrzési pontok
+            if (fuel === 'Dízel') {
+                items.push({
+                    id: 'spec_fuel_diesel',
+                    title: '[Dízel hajtás] Nagynyomású befecskendezők (porlasztók), EGR, DPF és turbó állapota',
+                    desc: 'Hidegindítási füst, porlasztó körüli kokszosodás, turbó tengelyirányú lógása és DPF telítettség.',
+                    defaultWarnCost: 90000,
+                    defaultBadCost: 260000
+                });
+            } else if (fuel === 'Hibrid' || fuel === 'Plug-in Hibrid') {
+                items.push({
+                    id: 'spec_fuel_hybrid',
+                    title: `[${fuel}] Nagyfeszültségű hibrid akkumulátor cellafeszültségek és akkuhűtő ventilátor`,
+                    desc: 'Cellák közötti feszültségeltérés, hibrid hűtőrács tisztasága és e-CVT / váltó működése.',
+                    defaultWarnCost: 65000,
+                    defaultBadCost: 350000
+                });
+            } else if (fuel === 'Elektromos') {
+                items.push({
+                    id: 'spec_fuel_ev',
+                    title: '[Elektromos hajtás] Akkumulátor SoH (kapacitás), AC/DC töltőport és hőszivattyú',
+                    desc: 'Valós hatótáv, gyorstöltés próbája, töltőkábel reteszelése és reduktor/hajtómű hangja.',
+                    defaultWarnCost: 50000,
+                    defaultBadCost: 450000
+                });
+            } else if (fuel === 'Benzin + LPG') {
+                items.push({
+                    id: 'spec_fuel_lpg',
+                    title: '[Benzin + LPG] Gáztartály nyomáspróba érvényessége (10 év), reduktor és gázinjektorok',
+                    desc: 'Tartály gyártási éve, zökkenőmentes átváltás benzinről gázra és szelephézag állapota.',
+                    defaultWarnCost: 45000,
+                    defaultBadCost: 110000
+                });
+            }
+
+            // 3. Kivitel- és évjáratspecifikus pontok
+            if (body === 'Kabrió') {
+                items.push({
+                    id: 'spec_body_cabrio',
+                    title: '[Kabrió kivitel] Tetőmozgató mechanika, hidraulika és tömítőgumik állapota',
+                    desc: 'Tető nyitása-zárása akadás nélkül, beázás nyomai a csomagtartóban és az ülések mögött.',
+                    defaultWarnCost: 45000,
+                    defaultBadCost: 160000
+                });
+            } else if (body === 'SUV / Terepjáró') {
+                items.push({
+                    id: 'spec_body_suv',
+                    title: '[SUV / Összkerékhajtás] Osztómű, hátsó differenciálmű, kardántengely és féltengelyek',
+                    desc: 'Teljes alászedésnél jelentkező ropogás, szimeringek olajfolyása és 4x4 kapcsolás.',
+                    defaultWarnCost: 60000,
+                    defaultBadCost: 180000
+                });
+            }
+
+            if (!isNaN(year) && year > 1950 && year <= 2008) {
+                items.push({
+                    id: 'spec_age_older',
+                    title: `[${year}-es évjárat] Fém fékcsövek, üzemanyagcsövek és gumiszilentek elöregedése`,
+                    desc: '18+ éves kor miatt a fém fékcsövek korróziója és a gumi alkatrészek repedezése kiemelten fontos.',
+                    defaultWarnCost: 35000,
+                    defaultBadCost: 85000
+                });
+            }
+
+            // Ha nincs más konkrétabb találat, általános modell- és motortípus-specifikus pontot adunk
+            if (items.length === 0) {
+                const label = [makeRaw, modelRaw, engineRaw].filter(Boolean).join(' ');
+                items.push({
+                    id: 'spec_generic_selected',
+                    title: `[${label}] Típusspecifikus szervizelőélet, visszahívások és gyári tartozékok`,
+                    desc: 'Az adott modellre jellemző típushibák, gyári kulcsok, emelő és kerékőr megléte.',
+                    defaultWarnCost: 35000,
+                    defaultBadCost: 90000
+                });
+            }
+
+            return items;
+        }
+
         // ==========================================
-        // 2. ALKALMAZÁS ÁLLAPOT (STATE)
+        // 2. ALKALMAZÁS ÁLLAPOT (STATE) ÉS INICIALIZÁLÁS
         // ==========================================
         let appState = {
             selectedBodyStyle: 'Ferdelhátú',
             selectedFuel: 'Benzin',
             showAllMakes: false,
             hasObd: true,
-            // itemStates[itemId] = { status: 'ok' | 'warn' | 'bad' | null, cost: number, note: string }
             itemStates: {},
-            // customDefects = [{ id: string, name: string, cost: number }]
             customDefects: []
         };
 
-        // ==========================================
-        // 3. INICIALIZÁLÁS
-        // ==========================================
         document.addEventListener('DOMContentLoaded', () => {
-            updateTimestamp();
-            renderMakeDropdown('', false);
-            renderModelDropdown('', false);
             renderBodyStyleButtons();
             renderFuelButtons();
             updateEngineFieldState();
             updateObdButtonsUI();
             renderChecklist();
+            updateTimestamp();
             updateAllCalculations();
             setupMobileNav();
-            setupDropdownOutsideClose();
+            setupDropdownOutsideClicks();
         });
 
-        function setupDropdownOutsideClose() {
+        function setupDropdownOutsideClicks() {
             document.addEventListener('click', (e) => {
                 const makeWrap = document.getElementById('make-dropdown-wrapper');
                 const modelWrap = document.getElementById('model-dropdown-wrapper');
@@ -1391,6 +1604,12 @@
                 .normalize('NFD')
                 .replace(/[\u0300-\u036f]/g, '')
                 .trim();
+        }
+
+        function isCompleteMake(val) {
+            const norm = normalizeText(val);
+            if (!norm) return false;
+            return allCarMakes.some(m => normalizeText(m) === norm);
         }
 
         function toggleShowAllMakes() {
@@ -1421,6 +1640,34 @@
             }
         }
 
+        function clearField(inputId, type) {
+            const input = document.getElementById(inputId);
+            if (!input || input.disabled) return;
+            input.value = '';
+
+            if (type === 'make') {
+                appState.showAllMakes = false;
+                document.getElementById('toggle-all-makes-btn').textContent = `Összes márka (${allCarMakes.length})`;
+                document.getElementById('car-model').value = '';
+                document.getElementById('car-engine').value = '';
+                document.getElementById('make-dropdown').classList.add('hidden');
+                document.getElementById('model-dropdown').classList.add('hidden');
+                document.getElementById('engine-dropdown').classList.add('hidden');
+                updateEngineFieldState();
+            } else if (type === 'model') {
+                document.getElementById('car-engine').value = '';
+                document.getElementById('model-dropdown').classList.add('hidden');
+                document.getElementById('engine-dropdown').classList.add('hidden');
+                updateEngineFieldState();
+            } else if (type === 'engine') {
+                document.getElementById('engine-dropdown').classList.add('hidden');
+            }
+
+            input.focus();
+            renderChecklist();
+            updateAllCalculations();
+        }
+
         function handleMakeInput(val) {
             if (!val.trim()) {
                 document.getElementById('car-model').value = '';
@@ -1430,52 +1677,42 @@
             renderMakeDropdown(val, true);
             renderModelDropdown(document.getElementById('car-model').value, false);
             updateEngineFieldState();
+            renderChecklist();
             updateAllCalculations();
-        }
-
-        function isCompleteMake(makeStr) {
-            const norm = normalizeText(makeStr);
-            if (!norm) return false;
-            return allCarMakes.some(m => normalizeText(m) === norm);
         }
 
         function renderMakeDropdown(query, shouldOpen) {
             const container = document.getElementById('make-dropdown');
-            const currentVal = document.getElementById('car-make').value.trim();
             const q = normalizeText(query);
+            const currentVal = document.getElementById('car-make').value.trim();
 
-            let list = [];
-            if (appState.showAllMakes) {
-                list = q.length > 0
-                    ? allCarMakes.filter(m => normalizeText(m).includes(q))
-                    : allCarMakes;
-            } else if (q.length > 0) {
-                const startsWith = allCarMakes.filter(m => normalizeText(m).startsWith(q));
-                const contains = allCarMakes.filter(m => !normalizeText(m).startsWith(q) && normalizeText(m).includes(q));
-                list = [...startsWith, ...contains];
-            } else {
+            if (q.length === 0 && !appState.showAllMakes) {
                 container.innerHTML = '';
                 container.classList.add('hidden');
                 return;
             }
 
-            if (list.length === 0) {
+            const filtered = q.length > 0
+                ? allCarMakes.filter(make => normalizeText(make).startsWith(q))
+                : allCarMakes;
+
+            if (filtered.length === 0) {
                 container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400 italic">Nincs találat a listában, de szabadon beírható.</div>`;
                 if (shouldOpen) container.classList.remove('hidden');
                 return;
             }
 
-            container.innerHTML = list.map(make => {
+            container.innerHTML = filtered.map(make => {
                 const isSelected = normalizeText(currentVal) === normalizeText(make);
                 return `
                     <button type="button" onclick="selectMake('${make.replace(/'/g, "\\'")}')"
                         class="w-full text-left px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                             isSelected
-                                ? 'bg-slate-900 text-white'
+                                ? 'bg-brand-500 text-white'
                                 : 'text-slate-700 hover:bg-brand-50 hover:text-brand-700'
                         }">
                         <span>${make}</span>
-                        ${isSelected ? '<i class="fa-solid fa-check text-brand-400 text-xs"></i>' : ''}
+                        ${isSelected ? '<i class="fa-solid fa-check text-xs"></i>' : ''}
                     </button>
                 `;
             }).join('');
@@ -1493,18 +1730,30 @@
             appState.showAllMakes = false;
             document.getElementById('toggle-all-makes-btn').textContent = `Összes márka (${allCarMakes.length})`;
             document.getElementById('make-dropdown').classList.add('hidden');
-            renderModelDropdown(document.getElementById('car-model').value, true);
+
+            document.getElementById('car-model').value = '';
+            document.getElementById('car-engine').value = '';
             updateEngineFieldState();
+            renderChecklist();
             updateAllCalculations();
+
+            const modelInput = document.getElementById('car-model');
+            modelInput.focus();
+            renderModelDropdown('', true);
+        }
+
+        function getModelsForCurrentMake() {
+            const makeRaw = document.getElementById('car-make').value.trim();
+            const norm = normalizeText(makeRaw);
+            if (!norm) return [];
+            const matchedMake = allCarMakes.find(m => normalizeText(m) === norm);
+            if (matchedMake && modelsByMake[matchedMake]) {
+                return modelsByMake[matchedMake];
+            }
+            return [];
         }
 
         function toggleModelDropdown() {
-            const makeVal = document.getElementById('car-make').value.trim();
-            if (!isCompleteMake(makeVal)) {
-                showToast('Előbb válassz ki egy márkát!', 'warning');
-                document.getElementById('car-make').focus();
-                return;
-            }
             const dd = document.getElementById('model-dropdown');
             if (!dd.classList.contains('hidden')) {
                 dd.classList.add('hidden');
@@ -1514,60 +1763,62 @@
         }
 
         function handleModelFocus() {
-            const makeVal = document.getElementById('car-make').value.trim();
+            const makeVal = document.getElementById('car-make').value;
             if (isCompleteMake(makeVal)) {
                 renderModelDropdown(document.getElementById('car-model').value, true);
             }
         }
 
         function handleModelInput(val) {
+            if (!val.trim()) {
+                document.getElementById('car-engine').value = '';
+                document.getElementById('engine-dropdown').classList.add('hidden');
+            }
             renderModelDropdown(val, true);
             updateEngineFieldState();
+            renderChecklist();
             updateAllCalculations();
         }
 
         function renderModelDropdown(query, shouldOpen) {
             const container = document.getElementById('model-dropdown');
             const makeVal = document.getElementById('car-make').value.trim();
-            const currentModelVal = document.getElementById('car-model').value.trim();
+
+            if (!isCompleteMake(makeVal)) {
+                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400 italic">Előbb válassz vagy írj be egy teljes márkanevet!</div>`;
+                if (shouldOpen) {
+                    container.classList.remove('hidden');
+                } else {
+                    container.classList.add('hidden');
+                }
+                return;
+            }
+
+            const models = getModelsForCurrentMake();
+            const currentVal = document.getElementById('car-model').value.trim();
             const q = normalizeText(query);
 
-            // Amíg a márka nincs teljesen beírva vagy kiválasztva, ne legyen példa a modellnél
-            if (!isCompleteMake(makeVal)) {
-                container.innerHTML = '';
-                container.classList.add('hidden');
+            const filtered = q.length > 0
+                ? models.filter(m => normalizeText(m).includes(q))
+                : models;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400 italic">Nincs találat a listában, de szabadon beírható.</div>`;
+                if (shouldOpen) container.classList.remove('hidden');
                 return;
             }
 
-            const matchedMakeKey = Object.keys(modelsByMake).find(
-                k => normalizeText(k) === normalizeText(makeVal)
-            );
-
-            let pool = matchedMakeKey ? modelsByMake[matchedMakeKey] : [];
-
-            if (q.length > 0 && pool.length > 0) {
-                const startsWith = pool.filter(m => normalizeText(m).startsWith(q));
-                const contains = pool.filter(m => !normalizeText(m).startsWith(q) && normalizeText(m).includes(q));
-                pool = [...startsWith, ...contains];
-            }
-
-            if (pool.length === 0) {
-                container.innerHTML = '';
-                container.classList.add('hidden');
-                return;
-            }
-
-            container.innerHTML = pool.map(model => {
-                const isSelected = normalizeText(currentModelVal) === normalizeText(model);
+            container.innerHTML = filtered.map(model => {
+                const isSelected = normalizeText(currentVal) === normalizeText(model);
                 return `
                     <button type="button" onclick="selectModel('${model.replace(/'/g, "\\'")}')"
                         class="w-full text-left px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                             isSelected
-                                ? 'bg-brand-500 text-white'
+                                ? 'bg-slate-900 text-white'
                                 : 'text-slate-700 hover:bg-brand-50 hover:text-brand-700'
                         }">
                         <span>${model}</span>
-                        ${isSelected ? '<i class="fa-solid fa-check text-white text-xs"></i>' : ''}
+                        ${isSelected ? '<i class="fa-solid fa-check text-brand-400 text-xs"></i>' : ''}
                     </button>
                 `;
             }).join('');
@@ -1577,81 +1828,6 @@
             } else {
                 container.classList.add('hidden');
             }
-        }
-
-        function selectModel(model) {
-            const input = document.getElementById('car-model');
-            input.value = model;
-            document.getElementById('model-dropdown').classList.add('hidden');
-            updateEngineFieldState();
-            const engineInput = document.getElementById('car-engine');
-            if (!engineInput.disabled) {
-                engineInput.focus();
-                renderEngineDropdown(engineInput.value, true);
-            }
-            updateAllCalculations();
-        }
-
-        function renderBodyStyleButtons() {
-            const container = document.getElementById('body-style-group');
-            container.innerHTML = bodyStyles.map(style => {
-                const active = appState.selectedBodyStyle === style.id;
-                return `
-                    <button type="button" onclick="selectBodyStyle('${style.id}')"
-                        class="tap-btn px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border flex items-center gap-2 transition-all cursor-pointer ${
-                            active
-                                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }">
-                        <i class="fa-solid ${style.icon} ${active ? 'text-brand-400' : 'text-slate-400'}"></i>
-                        ${style.id}
-                    </button>
-                `;
-            }).join('');
-        }
-
-        function selectBodyStyle(styleId) {
-            appState.selectedBodyStyle = styleId;
-            renderBodyStyleButtons();
-            updateAllCalculations();
-        }
-
-        function renderFuelButtons() {
-            const container = document.getElementById('fuel-type-group');
-            container.innerHTML = fuelTypes.map(fuel => {
-                const active = appState.selectedFuel === fuel.id;
-                return `
-                    <button type="button" onclick="selectFuel('${fuel.id}')"
-                        class="tap-btn px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border flex items-center gap-2 transition-all cursor-pointer ${
-                            active
-                                ? 'bg-brand-500 text-white border-brand-500 shadow-sm'
-                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }">
-                        <i class="fa-solid ${fuel.icon} ${active ? 'text-white' : 'text-slate-400'}"></i>
-                        ${fuel.id}
-                    </button>
-                `;
-            }).join('');
-        }
-
-        function selectFuel(fuelId) {
-            appState.selectedFuel = fuelId;
-            renderFuelButtons();
-            updateEngineFieldState();
-            const engineInput = document.getElementById('car-engine');
-            if (!engineInput.disabled) {
-                renderEngineDropdown(engineInput.value, true);
-            }
-            updateAllCalculations();
-        }
-
-        function handleYearInput() {
-            updateEngineFieldState();
-            const engineInput = document.getElementById('car-engine');
-            if (!engineInput.disabled && document.activeElement === engineInput) {
-                renderEngineDropdown(engineInput.value, true);
-            }
-            updateAllCalculations();
         }
 
         function updateEngineFieldState() {
@@ -1666,7 +1842,6 @@
 
             if (!isReady) {
                 engineInput.disabled = true;
-                engineInput.value = '';
                 engineInput.placeholder = 'Előbb válassz márkát és modellt...';
                 engineInput.className = 'w-full pl-10 pr-14 py-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-400 text-sm font-semibold cursor-not-allowed focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all';
                 clearBtn.disabled = true;
@@ -1678,119 +1853,87 @@
                 document.getElementById('engine-dropdown').classList.add('hidden');
             } else {
                 engineInput.disabled = false;
-                engineInput.placeholder = 'Válassz vagy írj be motort (pl. 1.6 16V, 1.9 TDI)...';
+                engineInput.placeholder = 'Válassz vagy írj be motort (pl. 1.6 16V, 1.9 TDI...)';
                 engineInput.className = 'w-full pl-10 pr-14 py-3 rounded-xl border border-slate-300 bg-slate-50/70 text-slate-900 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all';
                 clearBtn.disabled = false;
                 clearBtn.className = 'p-1 text-slate-400 hover:text-slate-600 cursor-pointer';
                 toggleBtn.disabled = false;
                 toggleBtn.className = 'p-1 text-slate-400 hover:text-slate-700 cursor-pointer';
 
-                const yearVal = parseInt(document.getElementById('car-year').value, 10);
-                const contextParts = [appState.selectedFuel, !isNaN(yearVal) && yearVal > 1900 ? `${yearVal}` : null].filter(Boolean);
-                badge.textContent = `${modelVal} • ${contextParts.join(' • ')}`;
+                const yearVal = document.getElementById('car-year').value.trim();
+                badge.textContent = `${appState.selectedFuel}${yearVal ? ' • ' + yearVal : ''}`;
                 badge.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200';
             }
         }
 
+        function getContextualEngines() {
+            const make = normalizeText(document.getElementById('car-make').value);
+            const model = normalizeText(document.getElementById('car-model').value);
+            const fuel = appState.selectedFuel;
+            const year = parseInt(document.getElementById('car-year').value, 10);
+
+            if (!make || !model) return [];
+
+            const profile = specificEngineProfiles.find(p => p.match(make, model));
+            if (!profile) {
+                return [];
+            }
+
+            const fuelKey = fuel === 'Benzin + LPG' ? 'Benzin' : fuel;
+            const candidates = profile[fuelKey] || [];
+
+            return candidates
+                .filter(e => isNaN(year) || year < 1950 || (year >= e.from && year <= e.to))
+                .map(e => e.name);
+        }
+
         function toggleEngineDropdown() {
-            const engineInput = document.getElementById('car-engine');
-            if (engineInput.disabled) return;
+            const input = document.getElementById('car-engine');
+            if (input.disabled) return;
             const dd = document.getElementById('engine-dropdown');
             if (!dd.classList.contains('hidden')) {
                 dd.classList.add('hidden');
                 return;
             }
-            renderEngineDropdown(engineInput.value, true);
+            renderEngineDropdown(input.value, true);
         }
 
         function handleEngineFocus() {
-            const engineInput = document.getElementById('car-engine');
-            if (!engineInput.disabled) {
-                renderEngineDropdown(engineInput.value, true);
+            const input = document.getElementById('car-engine');
+            if (!input.disabled) {
+                renderEngineDropdown(input.value, true);
             }
-        }
-
-        function handleEngineInput(val) {
-            renderEngineDropdown(val, true);
-            updateAllCalculations();
-        }
-
-        function getContextualEngines() {
-            const makeNorm = normalizeText(document.getElementById('car-make').value);
-            const modelNorm = normalizeText(document.getElementById('car-model').value);
-            const fuel = appState.selectedFuel;
-            const year = parseInt(document.getElementById('car-year').value, 10);
-
-            if (!makeNorm || !modelNorm) return { engines: [], noFuelMatch: false, noSpecificProfile: false };
-
-            const profile = specificEngineProfiles.find(p => p.match(makeNorm, modelNorm));
-            if (!profile) {
-                return { engines: [], noFuelMatch: false, noSpecificProfile: true };
-            }
-
-            let rawList = profile[fuel] || [];
-            if (fuel === 'Benzin + LPG' && rawList.length === 0 && profile['Benzin']) {
-                rawList = profile['Benzin'].map(item => ({
-                    ...item,
-                    name: `${item.name} [LPG kompatibilis]`
-                }));
-            }
-
-            if (rawList.length === 0) {
-                return { engines: [], noFuelMatch: true, noSpecificProfile: false };
-            }
-
-            let filtered = rawList;
-            if (!isNaN(year) && year >= 1950 && year <= 2027) {
-                const yearMatches = rawList.filter(e => year >= (e.from - 1) && year <= (e.to + 1));
-                if (yearMatches.length > 0) {
-                    filtered = yearMatches;
-                }
-            }
-
-            return {
-                engines: filtered.map(e => e.name),
-                noFuelMatch: false,
-                noSpecificProfile: false
-            };
         }
 
         function renderEngineDropdown(query, shouldOpen) {
             const container = document.getElementById('engine-dropdown');
-            const engineInput = document.getElementById('car-engine');
-            if (engineInput.disabled) {
+            const input = document.getElementById('car-engine');
+            if (input.disabled) {
                 container.classList.add('hidden');
                 return;
             }
 
-            const currentVal = engineInput.value.trim();
+            const engines = getContextualEngines();
             const q = normalizeText(query);
-            const { engines, noFuelMatch, noSpecificProfile } = getContextualEngines();
+            const currentVal = input.value.trim();
 
-            if (noFuelMatch) {
-                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-amber-700 bg-amber-50/70 font-medium">Ehhez a modellhez (${escapeHtml(document.getElementById('car-model').value)}) gyárilag nem létezett <strong>${escapeHtml(appState.selectedFuel)}</strong> motor, de szabadon beírható.</div>`;
+            if (engines.length === 0) {
+                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-500">Nincs előre tárolt gyári motor ehhez a kombinációhoz (${appState.selectedFuel}) – írd be szabadon a motorizáltságot!</div>`;
                 if (shouldOpen) container.classList.remove('hidden');
                 return;
             }
 
-            if (noSpecificProfile) {
-                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-500 italic">Ehhez a modellhez nincs előre tárolt gyári motorlista – írd be szabadon a pontos motorizáltságot (pl. 1.6 16V, 2.0 TDI).</div>`;
+            const filtered = q.length > 0
+                ? engines.filter(e => normalizeText(e).includes(q))
+                : engines;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400 italic">Nincs találat a szűrésre, de szabadon beírható.</div>`;
                 if (shouldOpen) container.classList.remove('hidden');
                 return;
             }
 
-            let list = engines;
-            if (q.length > 0) {
-                list = engines.filter(e => normalizeText(e).includes(q));
-            }
-
-            if (list.length === 0) {
-                container.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400 italic">Nincs szűrési találat a gyári motorok között, de szabadon beírható.</div>`;
-                if (shouldOpen) container.classList.remove('hidden');
-                return;
-            }
-
-            container.innerHTML = list.map(engineName => {
+            container.innerHTML = filtered.map(engineName => {
                 const isSelected = normalizeText(currentVal) === normalizeText(engineName);
                 return `
                     <button type="button" onclick="selectEngine('${engineName.replace(/'/g, "\\'")}')"
@@ -1799,7 +1942,7 @@
                                 ? 'bg-slate-900 text-white'
                                 : 'text-slate-700 hover:bg-brand-50 hover:text-brand-700'
                         }">
-                        <span>${escapeHtml(engineName)}</span>
+                        <span>${engineName}</span>
                         ${isSelected ? '<i class="fa-solid fa-check text-brand-400 text-xs"></i>' : ''}
                     </button>
                 `;
@@ -1812,44 +1955,51 @@
             }
         }
 
-        function selectEngine(engineName) {
-            const input = document.getElementById('car-engine');
-            input.value = engineName;
-            document.getElementById('engine-dropdown').classList.add('hidden');
-            updateAllCalculations();
+        function renderBodyStyleButtons() {
+            const container = document.getElementById('body-style-group');
+            container.innerHTML = bodyStyles.map(style => {
+                const isSelected = appState.selectedBodyStyle === style.id;
+                return `
+                    <button type="button" onclick="selectBodyStyle('${style.id}')"
+                        class="tap-btn px-3.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                            isSelected
+                                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-white'
+                        }">
+                        <i class="fa-solid ${style.icon} ${isSelected ? 'text-brand-400' : 'text-slate-400'}"></i>
+                        <span>${style.id}</span>
+                    </button>
+                `;
+            }).join('');
         }
 
-        function clearField(inputId, type) {
-            const input = document.getElementById(inputId);
-            if (input.disabled) return;
-            input.value = '';
-            input.focus();
-            if (type === 'make') {
-                document.getElementById('car-model').value = '';
-                document.getElementById('car-engine').value = '';
-                document.getElementById('engine-dropdown').classList.add('hidden');
-                renderMakeDropdown('', false);
-                renderModelDropdown('', false);
-                updateEngineFieldState();
-            } else if (type === 'model') {
-                document.getElementById('car-engine').value = '';
-                document.getElementById('engine-dropdown').classList.add('hidden');
-                renderModelDropdown('', true);
-                updateEngineFieldState();
-            } else if (type === 'engine') {
-                renderEngineDropdown('', true);
-            }
-            updateAllCalculations();
+        function renderFuelButtons() {
+            const container = document.getElementById('fuel-type-group');
+            container.innerHTML = fuelTypes.map(fuel => {
+                const isSelected = appState.selectedFuel === fuel.id;
+                return `
+                    <button type="button" onclick="selectFuel('${fuel.id}')"
+                        class="tap-btn px-3.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                            isSelected
+                                ? 'bg-brand-500 text-white border-brand-500 shadow-xs'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-brand-300 hover:bg-white'
+                        }">
+                        <i class="fa-solid ${fuel.icon} ${isSelected ? 'text-white' : 'text-slate-400'}"></i>
+                        <span>${fuel.id}</span>
+                    </button>
+                `;
+            }).join('');
         }
 
         // ==========================================
-        // 5. OBD SCANNER MÓDVÁLASZTÓ
+        // 5. OBD MÓD VÁLTÓ
         // ==========================================
         function setObdMode(hasObd) {
             appState.hasObd = hasObd;
             updateObdButtonsUI();
             renderChecklist();
             updateAllCalculations();
+            showToast(hasObd ? 'OBD diagnosztikai mód aktiválva.' : 'OBD nélküli szemrevételezéses mód aktiválva.', 'info');
         }
 
         function updateObdButtonsUI() {
@@ -1889,15 +2039,40 @@
 
         function renderChecklist() {
             const root = document.getElementById('checklist-categories-root');
+            const makeRaw = document.getElementById('car-make')?.value.trim() || '';
+            const modelRaw = document.getElementById('car-model')?.value.trim() || '';
+            const engineRaw = document.getElementById('car-engine')?.value.trim() || '';
+            const vehicleLabel = [makeRaw, modelRaw, engineRaw].filter(Boolean).join(' ');
+
+            const subtitleEl = document.getElementById('vehicle-specific-subtitle');
+            if (subtitleEl) {
+                if (vehicleLabel) {
+                    subtitleEl.textContent = `Személyre szabva: ${vehicleLabel} (${appState.selectedFuel})`;
+                    subtitleEl.classList.remove('hidden');
+                } else {
+                    subtitleEl.classList.add('hidden');
+                }
+            }
+
             root.innerHTML = checklistCategories.map(cat => {
                 const items = cat.getItems(appState.hasObd);
+                if (!items || items.length === 0) return '';
+
+                const isSpecific = Boolean(cat.isSpecific);
+                const categoryTitle = isSpecific && vehicleLabel
+                    ? `Mit kell átnézni ezen az autón? – ${escapeHtml(vehicleLabel)}`
+                    : cat.title;
+
                 return `
-                    <div class="space-y-3">
-                        <div class="flex items-center gap-2.5 pb-2 border-b border-slate-200">
-                            <div class="w-8 h-8 rounded-lg bg-slate-900 text-brand-400 flex items-center justify-center text-sm">
-                                <i class="fa-solid ${cat.icon}"></i>
+                    <div class="space-y-3 ${isSpecific ? 'p-4 rounded-2xl bg-brand-50/40 border-2 border-brand-200' : ''}">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b ${isSpecific ? 'border-brand-200' : 'border-slate-200'}">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-lg ${isSpecific ? 'bg-brand-500 text-white' : 'bg-slate-900 text-brand-400'} flex items-center justify-center text-sm">
+                                    <i class="fa-solid ${cat.icon}"></i>
+                                </div>
+                                <h3 class="text-base font-extrabold text-slate-900">${categoryTitle}</h3>
                             </div>
-                            <h3 class="text-base font-extrabold text-slate-900">${cat.title}</h3>
+                            ${isSpecific ? '<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-brand-500 text-white">Típusspecifikus lista</span>' : ''}
                         </div>
 
                         <div class="space-y-3">
@@ -1998,16 +2173,57 @@
             updateAllCalculations();
         }
 
-        function updateItemCost(itemId, rawVal) {
+        function updateItemCost(itemId, value) {
             if (!appState.itemStates[itemId]) return;
-            const parsed = Math.max(0, parseInt(rawVal, 10) || 0);
-            appState.itemStates[itemId].cost = parsed;
+            appState.itemStates[itemId].cost = Math.max(0, parseInt(value, 10) || 0);
             updateAllCalculations();
         }
 
-        function updateItemNote(itemId, textVal) {
+        function updateItemNote(itemId, value) {
             if (!appState.itemStates[itemId]) return;
-            appState.itemStates[itemId].note = textVal;
+            appState.itemStates[itemId].note = value;
+            updateAllCalculations();
+        }
+
+        function selectModel(model) {
+            const input = document.getElementById('car-model');
+            input.value = model;
+            document.getElementById('model-dropdown').classList.add('hidden');
+            updateEngineFieldState();
+            renderChecklist();
+            const engineInput = document.getElementById('car-engine');
+            if (!engineInput.disabled) {
+                engineInput.focus();
+                renderEngineDropdown(engineInput.value, true);
+            }
+            updateAllCalculations();
+        }
+
+        function selectBodyStyle(styleId) {
+            appState.selectedBodyStyle = styleId;
+            renderBodyStyleButtons();
+            renderChecklist();
+            updateAllCalculations();
+        }
+        function selectFuel(fuelId) {
+            appState.selectedFuel = fuelId;
+            renderFuelButtons();
+            updateEngineFieldState();
+            renderChecklist();
+            const engineInput = document.getElementById('car-engine');
+            if (!engineInput.disabled) {
+                renderEngineDropdown(engineInput.value, true);
+            }
+            updateAllCalculations();
+        }
+
+        function handleYearInput() {
+            updateEngineFieldState();
+            renderChecklist();
+            const engineInput = document.getElementById('car-engine');
+            if (!engineInput.disabled && document.activeElement === engineInput) {
+                renderEngineDropdown(engineInput.value, true);
+            }
             updateAllCalculations();
         }
 
@@ -2039,6 +2255,19 @@
             showToast('Egyedi hiba hozzáadva a listához.', 'success');
         }
 
+        function handleEngineInput(val) {
+            renderEngineDropdown(val, true);
+            renderChecklist();
+            updateAllCalculations();
+        }
+        function selectEngine(engineName) {
+            const input = document.getElementById('car-engine');
+            input.value = engineName;
+            document.getElementById('engine-dropdown').classList.add('hidden');
+            renderChecklist();
+            updateAllCalculations();
+        }
+
         function removeCustomDefect(id) {
             appState.customDefects = appState.customDefects.filter(d => d.id !== id);
             renderCustomDefectsList();
@@ -2046,9 +2275,9 @@
         }
 
         function updateCustomDefectCost(id, val) {
-            const item = appState.customDefects.find(d => d.id === id);
-            if (item) {
-                item.cost = Math.max(0, parseInt(val, 10) || 0);
+            const defect = appState.customDefects.find(d => d.id === id);
+            if (defect) {
+                defect.cost = Math.max(0, parseInt(val, 10) || 0);
                 updateAllCalculations();
             }
         }
@@ -2496,88 +2725,6 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             showToast('Word (.doc) jegyzőkönyv letöltése elindult.', 'success');
-        }
-
-        function exportToJson() {
-            const payload = {
-                version: 2,
-                exportedAt: new Date().toISOString(),
-                vehicle: {
-                    make: document.getElementById('car-make').value,
-                    model: document.getElementById('car-model').value,
-                    engine: document.getElementById('car-engine').value,
-                    bodyStyle: appState.selectedBodyStyle,
-                    fuel: appState.selectedFuel,
-                    year: document.getElementById('car-year').value,
-                    mileage: document.getElementById('car-mileage').value,
-                    originalPrice: document.getElementById('car-original-price').value
-                },
-                hasObd: appState.hasObd,
-                itemStates: appState.itemStates,
-                customDefects: appState.customDefects,
-                generalNotes: document.getElementById('general-notes').value
-            };
-
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const makeSlug = (payload.vehicle.make || 'jarmu').replace(/\s+/g, '_');
-            a.href = url;
-            a.download = `kocsi_felmeres_${makeSlug}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast('JSON adatfájl sikeresen elmentve!', 'success');
-        }
-
-        function triggerJsonImport() {
-            document.getElementById('json-import-input').click();
-        }
-
-        function handleJsonImport(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (!data || !data.vehicle) {
-                        throw new Error('Érvénytelen fájlformátum');
-                    }
-
-                    document.getElementById('car-make').value = data.vehicle.make || '';
-                    document.getElementById('car-model').value = data.vehicle.model || '';
-                    document.getElementById('car-year').value = data.vehicle.year || '';
-                    document.getElementById('car-mileage').value = data.vehicle.mileage || '';
-                    document.getElementById('car-original-price').value = data.vehicle.originalPrice || '';
-                    document.getElementById('general-notes').value = data.generalNotes || '';
-
-                    appState.selectedBodyStyle = data.vehicle.bodyStyle || 'Ferdelhátú';
-                    appState.selectedFuel = data.vehicle.fuel || 'Benzin';
-                    appState.hasObd = typeof data.hasObd === 'boolean' ? data.hasObd : true;
-                    appState.itemStates = data.itemStates || {};
-                    appState.customDefects = Array.isArray(data.customDefects) ? data.customDefects : [];
-                    appState.showAllMakes = false;
-
-                    renderMakeDropdown(data.vehicle.make || '', false);
-                    renderModelDropdown(data.vehicle.model || '', false);
-                    renderBodyStyleButtons();
-                    renderFuelButtons();
-                    updateEngineFieldState();
-                    document.getElementById('car-engine').value = data.vehicle.engine || '';
-                    updateObdButtonsUI();
-                    renderChecklist();
-                    renderCustomDefectsList();
-                    updateAllCalculations();
-                    showToast('Felmérés adatai sikeresen visszatöltve!', 'success');
-                } catch (err) {
-                    showToast('Hiba a JSON fájl beolvasásakor!', 'warning');
-                }
-                event.target.value = '';
-            };
-            reader.readAsText(file);
         }
 
         // ==========================================
